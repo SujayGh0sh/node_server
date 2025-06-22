@@ -61,7 +61,7 @@ app.use(express.json());
 
 // 🔐 Step 1: Start OAuth with LinkedIn
 app.get('/auth/linkedin', (req, res) => {
-  const scope = ['r_liteprofile', 'w_member_social'].join('%20');
+  const scope = ['w_member_social'];
 
   const authUrl = `https://www.linkedin.com/oauth/v2/authorization` +
     `?response_type=code` +
