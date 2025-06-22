@@ -61,13 +61,13 @@ app.use(express.json());
 
 // 🔐 Step 1: Start OAuth with LinkedIn
 app.get('/auth/linkedin', (req, res) => {
-  const scope = ['w_member_social'];
+  const scope = 'openid profile email w_member_social';
 
   const authUrl = `https://www.linkedin.com/oauth/v2/authorization` +
     `?response_type=code` +
     `&client_id=${process.env.LINKEDIN_CLIENT_ID}` +
     `&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URI)}` +
-    `&scope=${scope}`;
+    `&scope=${encodeURIComponent(scope)}`;
 
   console.log('[LOG] Redirecting to LinkedIn Auth URL:', authUrl);
   res.redirect(authUrl);
