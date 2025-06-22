@@ -96,22 +96,21 @@ app.post('/generate/image', async (req, res) => {
 
   try {
     const geminiRes = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [{ parts: [{ text: prompt }] }],
-        tools: [{
-          "code_execution": {}
-        }]
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"]
+        }
       }
     );
 
-    // This part is tricky. Based on docs, response structure should be different.
-    // Assuming the API returns image data in a specific part of the response.
-    // This may need adjustment based on actual API response for tool-based image generation.
-    const imagePart = geminiRes.data?.candidates?.[0]?.content?.parts?.[0];
-    if (imagePart && imagePart.fileData && imagePart.fileData.mimeType.startsWith('image/')) {
-      const base64Image = imagePart.fileData.fileUri; // Assuming fileUri holds base64 data, might need to be fetched
-      res.json({ image: `data:${imagePart.fileData.mimeType};base64,${base64Image}` });
+    const imagePart = geminiRes.data?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+
+    if (imagePart && imagePart.inlineData) {
+      const base64Image = imagePart.inlineData.data;
+      const mimeType = imagePart.inlineData.mimeType;
+      res.json({ image: `data:${mimeType};base64,${base64Image}` });
     } else {
       const generatedText = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (generatedText) {
@@ -125,11 +124,10 @@ app.post('/generate/image', async (req, res) => {
   } catch (err) {
     let errorDetails = err.message;
     if (err.response && err.response.data) {
-        // err.response.data can be a Buffer if axios expects arraybuffer
         try {
-            errorDetails = JSON.parse(Buffer.from(err.response.data).toString('utf-8'));
+            errorDetails = JSON.parse(err.response.data.toString('utf-8'));
         } catch(e) {
-            errorDetails = Buffer.from(err.response.data).toString('utf-8');
+            errorDetails = err.response.data.toString('utf-8');
         }
     }
     console.error('[ERROR] Gemini image generation failed:', JSON.stringify(errorDetails, null, 2));
