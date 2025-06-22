@@ -59,24 +59,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Step 1: Redirect user to LinkedIn authorization URL
+// 🔐 Step 1: Start OAuth with LinkedIn
 app.get('/auth/linkedin', (req, res) => {
+  const scope = ['r_liteprofile', 'w_member_social'].join('%20');
+
   const authUrl = `https://www.linkedin.com/oauth/v2/authorization` +
     `?response_type=code` +
     `&client_id=${process.env.LINKEDIN_CLIENT_ID}` +
     `&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URI)}` +
-    `&scope=r_liteprofile%20r_emailaddress%20w_member_social`;
+    `&scope=${scope}`;
 
   console.log('[LOG] Redirecting to LinkedIn Auth URL:', authUrl);
   res.redirect(authUrl);
 });
 
-// Step 2: LinkedIn redirects back with a code
+// 🔁 Step 2: OAuth Callback
 app.get('/auth/linkedin/callback', async (req, res) => {
   console.log('[LOG] Callback received with query:', req.query);
 
   const code = req.query.code;
-  if (!code) return res.status(400).send('Missing "code" in query');
+  if (!code) return res.status(400).send('Missing "code"');
 
   try {
     const tokenRes = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', null, {
@@ -87,58 +89,60 @@ app.get('/auth/linkedin/callback', async (req, res) => {
         client_id: process.env.LINKEDIN_CLIENT_ID,
         client_secret: process.env.LINKEDIN_CLIENT_SECRET
       },
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
     const accessToken = tokenRes.data.access_token;
-    console.log('[LOG] Access Token:', accessToken);
+    console.log('[LOG] LinkedIn access token:', accessToken);
 
+    // ✅ Return to Flutter via deep link
     res.redirect(`yourapp://callback?token=${accessToken}`);
   } catch (err) {
     console.error('[ERROR] Token exchange failed:', err.response?.data || err.message);
-    res.status(500).send('LinkedIn auth failed');
+    res.status(500).send('LinkedIn authentication failed');
   }
 });
 
-// Step 3: Fetch LinkedIn Profile
+// 🧑‍💼 Fetch LinkedIn Profile (optional display)
 app.get('/profile', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).send('Missing token');
+  if (!token) return res.status(401).send('Missing access token');
 
   try {
     const profile = await axios.get('https://api.linkedin.com/v2/me', {
       headers: { Authorization: `Bearer ${token}` }
     });
-    console.log('[LOG] LinkedIn Profile:', profile.data);
+    console.log('[LOG] Profile fetched:', profile.data);
     res.json(profile.data);
   } catch (err) {
-    console.error('[ERROR] Fetch profile failed:', err.response?.data || err.message);
-    res.status(500).send('Profile fetch failed');
+    console.error('[ERROR] Failed to fetch profile:', err.response?.data || err.message);
+    res.status(500).send('Failed to fetch profile');
   }
 });
 
-// Step 4: Generate LinkedIn post content using Gemini
+// 🤖 Generate LinkedIn Post Content using Gemini
 app.post('/generate/content', async (req, res) => {
   const { topic, tone, audience, history } = req.body;
-  const prompt = `Generate a LinkedIn post on "${topic}" in a "${tone}" tone for "${audience}" audience. Consider the user's previous behavior: ${history}`;
+  const prompt = `Generate a LinkedIn post on "${topic}" in a "${tone}" tone for a "${audience}" audience. Base the tone on previous posts like: ${history}`;
 
   try {
     const geminiRes = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      { contents: [{ parts: [{ text: prompt }] }] }
+      {
+        contents: [{ parts: [{ text: prompt }] }]
+      }
     );
 
-    const content = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No content generated';
-    console.log('[LOG] Gemini generated content:', content);
+    const content = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No content generated.';
+    console.log('[LOG] Gemini content generated:', content);
     res.json({ content });
   } catch (err) {
-    console.error('[ERROR] Gemini generation failed:', err.response?.data || err.message);
-    res.status(500).send('Content generation failed');
+    console.error('[ERROR] Gemini API failed:', err.response?.data || err.message);
+    res.status(500).send('Gemini content generation failed');
   }
 });
 
+// ✅ Server start
 app.listen(3000, () => {
   console.log('[SERVER] Running on http://localhost:3000');
 });
