@@ -109,7 +109,7 @@ app.get('/profile', async (req, res) => {
   if (!token) return res.status(401).send('Missing access token');
 
   try {
-    const profile = await axios.get('https://api.linkedin.com/v2/me', {
+    const profile = await axios.get('https://api.linkedin.com/v2/userinfo', {
       headers: { Authorization: `Bearer ${token}` }
     });
     console.log('[LOG] Profile fetched:', profile.data);
