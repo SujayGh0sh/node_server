@@ -99,22 +99,40 @@ app.post('/generate/image', async (req, res) => {
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'image/png'
-        }
-      },
-      {
-        responseType: 'arraybuffer', // Important to receive image data
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        tools: [{
+          "code_execution": {}
+        }]
       }
     );
 
-    const base64Image = Buffer.from(geminiRes.data, 'binary').toString('base64');
-    res.send({ image: `data:image/png;base64,${base64Image}` });
+    // This part is tricky. Based on docs, response structure should be different.
+    // Assuming the API returns image data in a specific part of the response.
+    // This may need adjustment based on actual API response for tool-based image generation.
+    const imagePart = geminiRes.data?.candidates?.[0]?.content?.parts?.[0];
+    if (imagePart && imagePart.fileData && imagePart.fileData.mimeType.startsWith('image/')) {
+      const base64Image = imagePart.fileData.fileUri; // Assuming fileUri holds base64 data, might need to be fetched
+      res.json({ image: `data:${imagePart.fileData.mimeType};base64,${base64Image}` });
+    } else {
+      const generatedText = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (generatedText) {
+        console.log('[LOG] Gemini returned text instead of image:', generatedText);
+        return res.status(500).send('Image generation failed: API returned text.');
+      }
+      console.error('[ERROR] Invalid response from Gemini, expected image:', JSON.stringify(geminiRes.data, null, 2));
+      res.status(500).send('Image generation failed: No image data in response');
+    }
+
   } catch (err) {
-    console.error('[ERROR] Gemini image generation failed:', err.response?.data || err.message);
+    let errorDetails = err.message;
+    if (err.response && err.response.data) {
+        // err.response.data can be a Buffer if axios expects arraybuffer
+        try {
+            errorDetails = JSON.parse(Buffer.from(err.response.data).toString('utf-8'));
+        } catch(e) {
+            errorDetails = Buffer.from(err.response.data).toString('utf-8');
+        }
+    }
+    console.error('[ERROR] Gemini image generation failed:', JSON.stringify(errorDetails, null, 2));
     res.status(500).send('Image generation failed');
   }
 });
