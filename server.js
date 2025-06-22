@@ -1,42 +1,51 @@
-// Example Node.js server to handle the LinkedIn OAuth redirect
 const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
+require('dotenv').config();
+
 const app = express();
+app.use(cors());
+app.use(express.json());
 
-const privacyPolicyContent = `
-  <html>
-    <head>
-      <title>Privacy Policy</title>
-    </head>
-    <body>
-      <h1>Privacy Policy</h1>
-      <p>Effective Date: [Insert Date]</p>
-      <h2>1. Introduction</h2>
-      <p>Welcome to our app. Your privacy is important to us. This privacy policy outlines how we collect, use, and protect your personal information.</p>
-      <h2>2. Information We Collect</h2>
-      <p>We collect data such as your LinkedIn profile details for the purpose of authentication and content posting.</p>
-      <h2>3. How We Use Your Information</h2>
-      <p>We use your information to authenticate and post content on your behalf on LinkedIn. We do not share your information with third parties.</p>
-      <h2>4. Data Protection</h2>
-      <p>We take reasonable steps to protect your information from unauthorized access or disclosure.</p>
-      <h2>5. User Rights</h2>
-      <p>You can request to delete your data or revoke our access at any time by contacting us.</p>
-      <h2>6. Changes to This Policy</h2>
-      <p>We may update this privacy policy from time to time. Please check this page regularly for any updates.</p>
-      <p>For more information, please contact us at support@yourapp.com.</p>
-    </body>
-  </html>
-`;
-
-app.get('/privacy-policy', (req, res) => {
-  res.send(privacyPolicyContent);
+app.get('/auth/linkedin', (req, res) => {
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${process.env.REDIRECT_URI}&scope=r_liteprofile%20r_emailaddress%20w_member_social`;
+  res.redirect(url);
 });
 
-app.get('/linkedin/callback', (req, res) => {
+app.get('/auth/linkedin/callback', async (req, res) => {
   const code = req.query.code;
-  // Use LinkedIn API to exchange authorization code for access token
-  res.send('Received code: ' + code);
+  const tokenRes = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', null, {
+    params: {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: process.env.REDIRECT_URI,
+      client_id: process.env.LINKEDIN_CLIENT_ID,
+      client_secret: process.env.LINKEDIN_CLIENT_SECRET
+    }
+  });
+  const accessToken = tokenRes.data.access_token;
+  res.redirect(`yourapp://callback?token=${accessToken}`);
 });
 
-app.listen(3000, () => {
-  console.log('Server running at http://localhost:3000');
-}); 
+app.get('/profile', async (req, res) => {
+  const token = req.headers.authorization.split(' ')[1];
+  const profile = await axios.get('https://api.linkedin.com/v2/me', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  res.json(profile.data);
+});
+
+app.post('/generate/content', async (req, res) => {
+  const { topic, tone, audience, history } = req.body;
+  const prompt = `Generate LinkedIn content on '${topic}' in a '${tone}' tone for '${audience}' based on: ${history}`;
+
+  const geminiRes = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    { contents: [{ parts: [{ text: prompt }] }] }
+  );
+
+  const content = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No content generated';
+  res.json({ content });
+});
+
+app.listen(3000, () => console.log('Backend running on port 3000'));
