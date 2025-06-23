@@ -136,10 +136,27 @@ app.post('/generate/image', async (req, res) => {
 });
 
 app.post('/post-to-linkedin', async (req, res) => {
-  const { token, content, author } = req.body;
+  let { token, content, author } = req.body;
 
-  if (!token || !content || !author) {
-    return res.status(400).send('Missing required fields: token, content, author');
+  if (!token || !content) {
+    return res.status(400).send('Missing required fields: token, content');
+  }
+
+  // If author is missing or not in the correct format, fetch the userinfo
+  if (!author || !author.startsWith('urn:li:person:')) {
+    try {
+      const profileRes = await axios.get('https://api.linkedin.com/v2/userinfo', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const sub = profileRes.data.sub;
+      if (!sub) {
+        return res.status(400).send('Unable to fetch LinkedIn user ID');
+      }
+      author = `urn:li:person:${sub}`;
+    } catch (err) {
+      console.error('[ERROR] Failed to fetch LinkedIn user ID:', err.response?.data || err.message);
+      return res.status(500).send('Failed to fetch LinkedIn user ID');
+    }
   }
 
   try {
