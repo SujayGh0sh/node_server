@@ -135,6 +135,48 @@ app.post('/generate/image', async (req, res) => {
   }
 });
 
+app.post('/post-to-linkedin', async (req, res) => {
+  const { token, content, author } = req.body;
+
+  if (!token || !content || !author) {
+    return res.status(400).send('Missing required fields: token, content, author');
+  }
+
+  try {
+    const response = await axios.post(
+      'https://api.linkedin.com/v2/ugcPosts',
+      {
+        author,
+        lifecycleState: 'PUBLISHED',
+        specificContent: {
+          'com.linkedin.ugc.ShareContent': {
+            shareCommentary: {
+              text: content
+            },
+            shareMediaCategory: 'NONE'
+          }
+        },
+        visibility: {
+          'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Restli-Protocol-Version': '2.0.0',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log('[LOG] LinkedIn post successful:', response.data);
+    res.send({ status: 'success', postUrn: response.data });
+  } catch (err) {
+    console.error('[ERROR] LinkedIn post failed:', err.response?.data || err.message);
+    res.status(500).send('Failed to post to LinkedIn');
+  }
+});
+
 // ✅ Server start
 app.listen(3000, () => {
   console.log('[SERVER] Running on http://localhost:3000');
