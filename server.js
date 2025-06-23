@@ -135,7 +135,7 @@ app.post('/generate/image', async (req, res) => {
   }
 });
 
-app.post('/post-to-linkedin', async (req, res) => {
+app.post('/post-to-linkedin-auto', async (req, res) => {
   let { token, content, author } = req.body;
 
   if (!token || !content) {
