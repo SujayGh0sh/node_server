@@ -340,6 +340,63 @@ app.post('/generate/image', async (req, res) => {
   }
 });
 
+// 📷 Upload image to LinkedIn
+app.post('/upload-image', async (req, res) => {
+  const { token, author, base64Image } = req.body;
+
+  if (!token || !author || !base64Image) {
+    return res.status(400).send('Missing token, author, or base64Image');
+  }
+
+  try {
+    // 1️⃣ Register the upload with LinkedIn
+    const registerRes = await axios.post(
+      'https://api.linkedin.com/v2/assets?action=registerUpload',
+      {
+        registerUploadRequest: {
+          owner: author,
+          recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
+          serviceRelationships: [
+            {
+              identifier: 'urn:li:userGeneratedContent',
+              relationshipType: 'OWNER',
+            },
+          ],
+          supportedUploadMechanism: ['SYNCHRONOUS_UPLOAD'],
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Restli-Protocol-Version': '2.0.0',
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const uploadUrl = registerRes.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl;
+    const asset = registerRes.data.value.asset;
+
+    // 2️⃣ Upload the image to LinkedIn using PUT
+    const imageBuffer = Buffer.from(base64Image.split(',')[1], 'base64');
+
+    await axios.put(uploadUrl, imageBuffer, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'image/jpeg', // or image/png based on your image
+        'Content-Length': imageBuffer.length,
+      },
+    });
+
+    // ✅ Return the asset (media URN) to be used in a LinkedIn post
+    res.json({ asset });
+  } catch (err) {
+    console.error('[ERROR] Image upload to LinkedIn failed:', err.response?.data || err.message);
+    res.status(500).send('LinkedIn image upload failed');
+  }
+});
+
+
 // 🚀 Post to LinkedIn
 app.post('/post-to-linkedin-auto', async (req, res) => {
   let { token, content, author } = req.body;
