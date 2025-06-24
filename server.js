@@ -313,58 +313,56 @@ app.post('/upload-image', async (req, res) => {
   const { image, token } = req.body;
 
   if (!image || !token) return res.status(400).send('Missing image or token');
-  const base64Data = image.split(',')[1];
-  const buffer = Buffer.from(base64Data, 'base64');
 
   try {
-    // 1. Fetch user's URN
-    const profile = await axios.get('https://api.linkedin.com/v2/userinfo', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    const authorUrn = `urn:li:person:${profile.data.sub}`;
-
-    // 2. Register upload
+    // Step 1: Register upload
     const registerRes = await axios.post(
       'https://api.linkedin.com/v2/assets?action=registerUpload',
       {
         registerUploadRequest: {
-          owner: authorUrn,
+          owner: `urn:li:person:${(await axios.get('https://api.linkedin.com/v2/userinfo', {
+            headers: { Authorization: `Bearer ${token}` },
+          })).data.sub}`,
           recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
           serviceRelationships: [
             {
               identifier: 'urn:li:userGeneratedContent',
-              relationshipType: 'OWNER'
-            }
-          ]
-        }
+              relationshipType: 'OWNER',
+            },
+          ],
+          supportedUploadMechanism: ['SYNCHRONOUS_UPLOAD'],
+        },
       },
       {
         headers: {
           Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
           'X-Restli-Protocol-Version': '2.0.0',
-          'Content-Type': 'application/json'
-        }
+        },
       }
     );
 
-    const { uploadUrl, asset } = registerRes.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'];
-    
-    // 3. Upload the image
-    await axios.put(uploadUrl, buffer, {
+    const uploadUrl = registerRes.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl;
+    const asset = registerRes.data.value.asset;
+
+    // Step 2: Upload image (binary buffer from base64)
+    const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
+
+    await axios.put(uploadUrl, imageBuffer, {
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/octet-stream',
-        'Content-Length': buffer.length
-      }
+        'Content-Type': 'image/png', // or image/jpeg if you change type
+        'Content-Length': imageBuffer.length,
+      },
     });
 
     res.json({ asset });
   } catch (err) {
-    console.error('[UPLOAD ERROR]', err.response?.data || err.message);
-    res.status(500).send('Image upload failed');
+    console.error('[ERROR] LinkedIn image upload failed:', err.response?.data || err.message);
+    res.status(500).send('Failed to upload image');
   }
 });
+
 
 // 🚀 Post to LinkedIn (text + optional image)
 app.post('/post-to-linkedin-auto', async (req, res) => {
